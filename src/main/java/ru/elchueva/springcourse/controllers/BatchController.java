@@ -1,0 +1,33 @@
+package ru.elchueva.springcourse.controllers;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import ru.elchueva.springcourse.dao.PersonDAO;
+
+@Controller
+@RequestMapping("/test-batch-update")
+public class BatchController {
+    private final PersonDAO personDao;
+
+    @Autowired
+    public BatchController(PersonDAO personDao) {
+        this.personDao = personDao;
+    }
+
+    @GetMapping()
+    public String index(){
+        return"batch/index";
+    }
+     @GetMapping("/without")
+    public String withoutBatch(){
+        personDao.testMultipleUpdate();
+        return "redirect:/people";
+    }
+    @GetMapping("/with")
+    public String withBatch(){
+        personDao.testBatchUpdate();
+        return "redirect:/people";
+    }
+}

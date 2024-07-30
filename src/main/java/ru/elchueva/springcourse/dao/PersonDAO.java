@@ -3,6 +3,8 @@ package ru.elchueva.springcourse.dao;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.env.PropertyResolver;
+import org.springframework.jdbc.core.BatchPreparedStatementSetter;
+import org.springframework.jdbc.core.BeanPropertyRowMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import ru.elchueva.springcourse.models.Person;
@@ -13,7 +15,7 @@ import java.util.List;
 
 @Component
 public class PersonDAO {
-    private JdbcTemplate jdbcTemplate;
+    private final JdbcTemplate jdbcTemplate;
     private static int PEOPLE_COUNT;
     @Autowired
     public PersonDAO(JdbcTemplate jdbcTemplate) {
@@ -21,70 +23,71 @@ public class PersonDAO {
     }
 
     public List<Person> index() {
-        return jdbcTemplate.query("SELECT * FROM Person", new PersonMapper()); //роу мапер такой объект, который  отображает строки из таблицы в сущности(в объект класса Person)
+        return jdbcTemplate.query("SELECT * FROM Person", new BeanPropertyRowMapper<>(Person.class)); //роу мапер такой объект, который  отображает строки из таблицы в сущности(в объект класса Person)
     }
 
     public Person show(int id) {
-        return jdbcTemplate.query("SELECT * FROM Person WHERE id=?", new Object[]{id}, new PersonMapper())
+        return jdbcTemplate.query("SELECT * FROM Person WHERE id=?", new Object[]{id}, new BeanPropertyRowMapper<>(Person.class))
                 .stream().findAny().orElse(null);//второй объект массив из значений ?,перевод строки в объект класса Person
     }
 
     public void save(Person person) {
-//        person.setId(++PEOPLE_COUNT);
-//        people.add(person);
-
-        try {
-            PreparedStatement preparedStatement =
-                    connection.prepareStatement("INSERT INTO PERSON VALUES (1, ?, ?, ?)");
-//            Statement statement = connection.createStatement();
-//            String SQL = "INSERT INTO Person VALUES(" + 1 + ",'" + person.getName() +
-//                    "'," + person.getAge() + ",'" + person.getEmail() + "')";
-            preparedStatement.setString(1, person.getName());
-            preparedStatement.setInt(2, person.getAge());
-            preparedStatement.setString(3, person.getEmail());
-
-            preparedStatement.executeUpdate();
-        } catch (SQLException throwables) {
-            throwables.printStackTrace();
-        }
-
-
+        jdbcTemplate.update("INSERT INTO Person VALUES (1, ?, ?, ?)", person.getName(), person.getAge(),
+                person.getEmail());
     }
 
     public void update(int id, Person updatedPerson) {
-//        Person personToBeUpdated = show(id);
-//
-//        personToBeUpdated.setName(updatedPerson.getName());
-//        personToBeUpdated.setAge(updatedPerson.getAge());
-//        personToBeUpdated.setEmail(updatedPerson.getEmail());
-        try {
-            PreparedStatement preparedStatement =
-                    connection.prepareStatement("UPDATE Person SET name = ?, age = ?, email = ? WHERE id = ?");
-            preparedStatement.setString(1, updatedPerson.getName());
-            preparedStatement.setInt(2, updatedPerson.getAge());
-            preparedStatement.setString(3, updatedPerson.getEmail());
-            preparedStatement.setInt(4, id);
-
-            preparedStatement.executeUpdate();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-
-
+        jdbcTemplate.update("UPDATE Person SET name=?, age=?, email=? WHERE id=?", updatedPerson.getName(), updatedPerson.getAge(),
+                updatedPerson.getEmail(), id);
     }
 
     public void delete(int id) {
-//        people.removeIf(p -> p.getId() == id);
-        PreparedStatement preparedStatement =
-                null;
-        try {
-            preparedStatement = connection.prepareStatement("DELETE FROM Person WHERE id=?");
+        jdbcTemplate.update("DELETE FROM Person WHERE id=?",  id);
 
-            preparedStatement.setInt(1, id);
-            preparedStatement.executeUpdate();
-        } catch (SQLException e) {
-            e.printStackTrace();
+    }
+    //////////////////
+    ////Тестируем производительность пакетной вставки
+    //////////////////
+     public void testMultipleUpdate(){
+        List<Person> people = create1000People();
+
+        long before = System.currentTimeMillis(); //текущее время в миллисекундах
+         for(Person person : people){
+             jdbcTemplate.update("INSERT INTO Person VALUES (? , ?, ?, ?)", person.getId(), person.getName(), person.getAge(),
+                     person.getEmail());
+         }
+        long after = System.currentTimeMillis();
+         System.out.println("Time: " + (after - before));
+     }
+    public void testBatchUpdate(){
+        List<Person> people = create1000People();
+
+        long before = System.currentTimeMillis();
+        jdbcTemplate.batchUpdate("INSERT INTO Person VALUES (?, ?, ?, ?)",
+                new BatchPreparedStatementSetter() {
+                    @Override
+                    public void setValues(PreparedStatement preparedStatement, int i) throws SQLException {
+                        //так ка ктут preparedStatement то все указываем для текущего человека a i=1000
+                        preparedStatement.setInt(1, people.get(i).getId());
+                        preparedStatement.setString(2, people.get(i).getName());
+                        preparedStatement.setInt(3, people.get(i).getAge());
+                        preparedStatement.setString(4, people.get(i).getEmail());
+                    }
+
+                    @Override
+                    public int getBatchSize() {
+                        return 1000;
+                    }
+                });
+        long after = System.currentTimeMillis();
+        System.out.println("Time: " + (after - before));
+    }
+
+    private List<Person> create1000People() {
+        List<Person> people = new ArrayList<>();
+        for(int i = 0; i < 1000; i++) {
+            people.add(new Person(i, "Name" + i, 30, "teat" + i + "@mail.ru "));
         }
-
+        return people;
     }
 }
